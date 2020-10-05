@@ -1,0 +1,23 @@
+{
+  "name": "babel-plugin-wildcard-import",
+  "version": "0.0.1",
+  "description": "Babel plugin to import multiple files at once",
+  "main": "index.js",
+  "scripts": {},
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/hmak-me/babel-plugin-wildcard-import.git"
+  },
+  "keywords": [
+    "babel",
+    "wildcard",
+    "bulk",
+    "import"
+  ],
+  "author": "Hossein Maktoobian",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/hmak-me/babel-plugin-wildcard-import/issues"
+  },
+  "homepage": "https://github.com/hmak-me/babel-plugin-wildcard-import#readme"
+}
