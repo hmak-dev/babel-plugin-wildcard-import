@@ -18,7 +18,7 @@ module.exports = (babel) => {
 				if (fs.existsSync(fullImportPath) && fs.lstatSync(fullImportPath).isDirectory()) {
 					// TODO: glob pattern & recursive
 
-					let files = fs.readdirSync(fullImportPath).reverse();
+					let files = fs.readdirSync(fullImportPath).filter(file => !fs.statSync(`${fullImportPath}/${file}`).isDirectory()).reverse();
 					if (
 						state.opts.changeExtensions &&
 						state.opts.changeExtensions.enabled &&
