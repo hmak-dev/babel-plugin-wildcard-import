@@ -35,7 +35,7 @@ module.exports = (babel) => {
 							return output;
 						});
 					}
-					const hasIndexFiles = files.filter((filename) => /^index\.(ts|js)$/.test(filename)).length > 0;
+					const hasIndexFiles = files.filter((filename) => /^index\.(t|j)sx?$/.test(filename)).length > 0;
 
 					// Check if there is no index files and there are files to import
 					if (!hasIndexFiles) {
