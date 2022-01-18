@@ -1,95 +1,192 @@
 const fs = require('fs');
 const path = require('path');
 
+function readDir(root, route, dirInfo = true) {
+	const outputFiles = [];
+
+	const files = fs.readdirSync(root);
+
+	for (let file of files) {
+		const filename = `${root}/${file}`;
+		const parsedFile = path.parse(file);
+
+		if (fs.statSync(filename).isDirectory()) {
+			outputFiles.push({
+				type: 'dir',
+				base: parsedFile.base,
+				ext: parsedFile.ext,
+				name: parsedFile.name,
+				dir: route,
+				path: `${route}/${file}`,
+				filename,
+				files: readDir(filename, `${route}/${file}`, false),
+			});
+		} else {
+			outputFiles.push({
+				type: 'file',
+				base: parsedFile.base,
+				ext: parsedFile.ext,
+				name: parsedFile.name,
+				dir: route,
+				path: `${route}/${file}`,
+				filename,
+			});
+		}
+	}
+
+	if (dirInfo) {
+		const parsedDir = path.parse(route);
+
+		return {
+			type: 'dir',
+			base: parsedDir.base,
+			ext: parsedDir.ext,
+			name: parsedDir.name,
+			dir: parsedDir.dir,
+			path: route,
+			filename: root,
+			files: outputFiles,
+		}
+	}
+
+	return outputFiles;
+}
+
 module.exports = (babel) => {
 	const { types: t } = babel;
+
+	function createObject(code, name) {
+		const variable = t.identifier(name);
+
+		code.insertBefore(
+			t.variableDeclaration(
+				'const',
+				[t.variableDeclarator(variable, t.objectExpression([]))]
+			)
+		);
+
+		return variable;
+	}
+
+	function createMemberObject(code, object, name) {
+		const memberExpression = t.memberExpression(object, t.stringLiteral(name), true);
+
+		code.insertBefore(
+			t.expressionStatement(
+				t.assignmentExpression(
+					'=',
+					memberExpression,
+					t.objectExpression([])
+				)
+			)
+		);
+
+		return memberExpression;
+	}
+
+	function importFile(code, name, file) {
+		code.insertBefore(
+			t.importDeclaration(
+				[t.importDefaultSpecifier(t.identifier(name))],
+				t.stringLiteral(file)
+			)
+		);
+	}
+
+	function importMemberFile(code, object, file, name) {
+		const id = code.scope.generateUidIdentifier('drimp');
+
+		code.insertBefore(
+			t.importDeclaration(
+				[t.importDefaultSpecifier(id)],
+				t.stringLiteral(file.path)
+			)
+		);
+
+		code.insertBefore(
+			t.expressionStatement(
+				t.assignmentExpression(
+					'=',
+					t.memberExpression(object, t.stringLiteral(name), true),
+					id
+				)
+			)
+		);
+	}
+
+	function importDirectory(code, directory, object) {
+		if (!object) { // No Object Name
+			directory.files.forEach((file) => {
+				if (file.type === 'file') {
+					code.insertAfter(
+						t.importDeclaration([], t.stringLiteral(file.path))
+					);
+				} else {
+					importDirectory(code, file, null);
+				}
+			});
+		} else {
+			directory.files.forEach((file) => {
+				if (file.type === 'file') {
+					importMemberFile(code, object, file, file.name);
+				} else {
+					const indexFile = file.files.find((file) => file.type === 'file' && /^index\.(ts|js)x?/.test(file.base));
+
+					if (indexFile) { // Import Index File
+						importMemberFile(code, object, indexFile, file.name)
+					} else { // Import Whole Directory
+						importDirectory(code, file, createMemberObject(code, object, file.name));
+					}
+				}
+			});
+		}
+	}
 
 	return {
 		visitor: {
 			ImportDeclaration(code, state) {
 				const { node } = code;
-				const importSource = node.source.value;
-				const currentFilename = state.file.opts.filename;
 
-				// Get import absolute path
-				const fullImportPath = path.resolve(path.dirname(currentFilename), importSource);
+				const importPath = node.source.value;
+				const absoluteImportPath = path.resolve(path.dirname(state.file.opts.filename), importPath);
 
 				// Check if it exists and it is a directory
-				if (fs.existsSync(fullImportPath) && fs.lstatSync(fullImportPath).isDirectory()) {
-					// TODO: glob pattern & recursive
+				if (fs.existsSync(absoluteImportPath) && fs.lstatSync(absoluteImportPath).isDirectory()) {
+					const hasIndexFile = fs.readdirSync(absoluteImportPath).filter((file) => /^index\.(ts|js)x?/.test(file)).length > 0;
 
-					let files = fs.readdirSync(fullImportPath).filter(file => !fs.statSync(`${fullImportPath}/${file}`).isDirectory()).reverse();
-					if (
-						state.opts.changeExtensions &&
-						state.opts.changeExtensions.enabled &&
-						Object.keys(state.opts.changeExtensions.extensions).length > 0
-					) {
-						files = files.map((file) => {
-							let output = file;
-							Object.keys(state.opts.changeExtensions.extensions).forEach((extension) => {
-								output = output.replace(
-									new RegExp(`.${extension}$`),
-									`.${state.opts.changeExtensions.extensions[extension]}`
-								);
-							});
-							return output;
-						});
-					}
-					const hasIndexFiles = files.filter((filename) => /^index\.(t|j)sx?$/.test(filename)).length > 0;
+					if (!hasIndexFile) {
+						// TODO: Integrate Glob Patterns
+						const dir = readDir(absoluteImportPath, importPath);
 
-					// Check if there is no index files and there are files to import
-					if (!hasIndexFiles) {
-						if (node.specifiers.length === 0) {
-							files.forEach((file) => {
-								code.insertAfter(t.importDeclaration([], t.stringLiteral(`${importSource}/${file}`)));
-							});
+						if (node.specifiers.length === 0) { // Simple Import
+							importDirectory(code, dir);
 						} else {
 							node.specifiers.forEach((spec) => {
-								const variableName = spec.local.name;
+								if (t.isImportDefaultSpecifier(spec) || t.isImportNamespaceSpecifier(spec)) { // Directory Import
+									importDirectory(code, dir, createObject(code, spec.local.name));
+								} else if (t.isImportSpecifier(spec)) { // Named Module Import
+									// Check For File Or Directory
+									let target = dir.files.find((file) => file.name === spec.imported.name);
 
-								if (t.isImportDefaultSpecifier(spec) || t.isImportNamespaceSpecifier(spec)) {
-									code.insertBefore(
-										t.variableDeclaration('const', [
-											t.variableDeclarator(t.identifier(variableName), t.objectExpression([])),
-										])
-									);
+									if (target) {
+										if (target.type === 'file') { // Import File
+											importFile(code, spec.local.name, target.path);
+										} else { // Import Directory
+											const indexFile = target.files.find((file) => file.type === 'file' && /^index\.(ts|js)x?/.test(file.base));
 
-									files.forEach((file) => {
-										const id = code.scope.generateUidIdentifier('drimp');
-
-										code.insertBefore(
-											t.importDeclaration([t.importDefaultSpecifier(id)], t.stringLiteral(`${importSource}/${file}`))
-										);
-
-										code.insertBefore(
-											t.expressionStatement(
-												t.assignmentExpression(
-													'=',
-													t.memberExpression(t.identifier(variableName), t.stringLiteral(path.parse(file).name), true),
-													id
-												)
-											)
-										);
-									});
-								} else if (t.isImportSpecifier(spec)) {
-									const filename = spec.imported.name;
-									const matchingFile = files.find((file) => file.startsWith(`${filename}.`));
-
-									if (matchingFile) {
-										code.insertBefore(
-											t.importDeclaration(
-												[t.importDefaultSpecifier(t.identifier(variableName))],
-												t.stringLiteral(`${importSource}/${matchingFile}`)
-											)
-										);
+											if (indexFile) { // Import Index File
+												importFile(code, spec.local.name, indexFile.path);
+											} else { // Import Whole Directory
+												importDirectory(code, target, createObject(code, spec.local.name));
+											}
+										}
 									} else {
-										// TODO: Throw error file not found
+										throw new Error(`Module not Found: '${spec.imported.name}'`);
 									}
 								}
 							});
 						}
 
-						// Remove directory import
 						code.remove();
 					}
 				}
