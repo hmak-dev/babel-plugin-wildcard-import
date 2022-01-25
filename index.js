@@ -1,7 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 
-function readDir(root, route, dirInfo = true) {
+function readDir(root, route, dirInfo = true, changeExtension = null) {
 	const outputFiles = [];
 
 	const files = fs.readdirSync(root);
@@ -19,16 +19,28 @@ function readDir(root, route, dirInfo = true) {
 				dir: route,
 				path: `${route}/${file}`,
 				filename,
-				files: readDir(filename, `${route}/${file}`, false),
+				files: readDir(filename, `${route}/${file}`, false, changeExtension),
 			});
 		} else {
+			let ext = parsedFile.ext;
+			let base = parsedFile.base;
+
+			if (changeExtension) {
+				if (changeExtension[ext.substring(1)]) {
+					ext = `.${changeExtension[ext.substring(1)]}`;
+					base = `${parsedFile.name}${ext}`;
+				}
+			}
+
 			outputFiles.push({
 				type: 'file',
-				base: parsedFile.base,
-				ext: parsedFile.ext,
+				originalBase: parsedFile.base,
+				originalExt: parsedFile.ext,
+				base,
+				ext,
 				name: parsedFile.name,
 				dir: route,
-				path: `${route}/${file}`,
+				path: `${route}/${base}`,
 				filename,
 			});
 		}
@@ -155,8 +167,10 @@ module.exports = (babel) => {
 					const hasIndexFile = fs.readdirSync(absoluteImportPath).filter((file) => /^index\.(ts|js)x?/.test(file)).length > 0;
 
 					if (!hasIndexFile) {
+						const changeExtensions = state.opts?.changeExtensions?.enabled ? state.opts.changeExtensions.extensions : undefined;
+
 						// TODO: Integrate Glob Patterns
-						const dir = readDir(absoluteImportPath, importPath);
+						const dir = readDir(absoluteImportPath, importPath, true, changeExtensions);
 
 						if (node.specifiers.length === 0) { // Simple Import
 							importDirectory(code, dir);

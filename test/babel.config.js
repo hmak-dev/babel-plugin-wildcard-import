@@ -3,11 +3,11 @@ module.exports = (api) => {
 
     return {
         presets: [['@babel/preset-env', { modules: 'cjs', targets: { node: true } }]],
-        plugins: [
-            [
-                '../index.js',
-                { changeExtensions: { enabled: process.env.NODE_ENV === 'production', extensions: { ts: 'js' } } },
-            ],
-        ],
+				plugins: [
+						[
+								'../index.js',
+								{ changeExtensions: { enabled: true, extensions: { ts: 'js' } } },
+						],
+				],
     };
 };
