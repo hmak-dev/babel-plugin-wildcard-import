@@ -126,7 +126,7 @@ module.exports = (babel) => {
 		);
 	}
 
-	function importDirectory(code, directory, object) {
+	function importDirectory(code, directory, object, depth = 0) {
 		if (!object) { // No Object Name
 			directory.files.forEach((file) => {
 				if (file.type === 'file') {
@@ -134,10 +134,22 @@ module.exports = (babel) => {
 						t.importDeclaration([], t.stringLiteral(file.path))
 					);
 				} else {
-					importDirectory(code, file, null);
+					importDirectory(code, file, null, depth + 1);
 				}
 			});
 		} else {
+			const memberExpression = t.memberExpression(object, t.stringLiteral('__import_depth'), true);
+
+			code.insertBefore(
+				t.expressionStatement(
+					t.assignmentExpression(
+						'=',
+						memberExpression,
+						t.numericLiteral(depth)
+					)
+				)
+			);
+
 			directory.files.forEach((file) => {
 				if (file.type === 'file') {
 					importMemberFile(code, object, file, file.name);
@@ -147,7 +159,7 @@ module.exports = (babel) => {
 					if (indexFile) { // Import Index File
 						importMemberFile(code, object, indexFile, file.name)
 					} else { // Import Whole Directory
-						importDirectory(code, file, createMemberObject(code, object, file.name));
+						importDirectory(code, file, createMemberObject(code, object, file.name), depth + 1);
 					}
 				}
 			});
