@@ -1,6 +1,8 @@
 const fs = require('fs');
 const path = require('path');
 
+const indexFileRegex = /^index\./;
+
 function readDir(root, route, dirInfo = true, changeExtension = null) {
 	const outputFiles = [];
 
@@ -154,7 +156,7 @@ module.exports = (babel) => {
 				if (file.type === 'file') {
 					importMemberFile(code, object, file, file.name);
 				} else {
-					const indexFile = file.files.find((file) => file.type === 'file' && /^index\.(ts|js)x?/.test(file.base));
+					const indexFile = file.files.find((file) => file.type === 'file' && indexFileRegex.test(file.base));
 
 					if (indexFile) { // Import Index File
 						importMemberFile(code, object, indexFile, file.name)
@@ -176,7 +178,7 @@ module.exports = (babel) => {
 
 				// Check if it exists and it is a directory
 				if (fs.existsSync(absoluteImportPath) && fs.lstatSync(absoluteImportPath).isDirectory()) {
-					const hasIndexFile = fs.readdirSync(absoluteImportPath).filter((file) => /^index\.(ts|js)x?/.test(file)).length > 0;
+					const hasIndexFile = fs.readdirSync(absoluteImportPath).filter((file) => indexFileRegex.test(file)).length > 0;
 
 					if (!hasIndexFile) {
 						const changeExtensions = state.opts?.changeExtensions?.enabled ? state.opts.changeExtensions.extensions : undefined;
@@ -198,7 +200,7 @@ module.exports = (babel) => {
 										if (target.type === 'file') { // Import File
 											importFile(code, spec.local.name, target.path);
 										} else { // Import Directory
-											const indexFile = target.files.find((file) => file.type === 'file' && /^index\.(ts|js)x?/.test(file.base));
+											const indexFile = target.files.find((file) => file.type === 'file' && indexFileRegex.test(file.base));
 
 											if (indexFile) { // Import Index File
 												importFile(code, spec.local.name, indexFile.path);
