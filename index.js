@@ -1,6 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 
+const hiddenFileRegex = /^[.~]/;
 const indexFileRegex = /^index\./;
 
 function readDir(root, route, dirInfo = true, changeExtension = null) {
@@ -9,6 +10,9 @@ function readDir(root, route, dirInfo = true, changeExtension = null) {
 	const files = fs.readdirSync(root);
 
 	for (let file of files) {
+		if (hiddenFileRegex.test(file)) {
+			continue;
+		}
 		const filename = `${root}/${file}`;
 		const parsedFile = path.parse(file);
 
